@@ -42,6 +42,21 @@ interface InspectionData {
   TrnDate: string;
 }
 
+interface Subgroup {
+  mean: number;
+  range: number;
+  values: number[];
+}
+
+// SPC Constants for different sample sizes
+const SPC_CONSTANTS = {
+  1: { A2: 2.66, D3: 0, D4: 3.267, d2: 1.128 },
+  2: { A2: 1.88, D3: 0, D4: 3.267, d2: 1.128 },
+  3: { A2: 1.023, D3: 0, D4: 2.575, d2: 1.693 },
+  4: { A2: 0.729, D3: 0, D4: 2.282, d2: 2.059 },
+  5: { A2: 0.577, D3: 0, D4: 2.115, d2: 2.326 }
+} as const;
+
 export default function AnalysisScreen() {
   const [selectedShifts, setSelectedShifts] = useState<number[]>([]);
   const [material, setMaterial] = useState('');
@@ -135,7 +150,7 @@ export default function AnalysisScreen() {
     }
   };
 
-  const calculateSubgroups = (data: InspectionData[], size: number) => {
+  const calculateSubgroups = (data: InspectionData[], size: number): Subgroup[] => {
     const sortedData = data
       .map(d => ({
         ...d,
@@ -155,14 +170,15 @@ export default function AnalysisScreen() {
       }));
     }
 
-    const subgroups = [];
+    const subgroups: Subgroup[] = [];
     for (let i = 0; i < sortedData.length; i += size) {
       const subgroup = sortedData.slice(i, i + size);
       if (subgroup.length === size) {
         const values = subgroup.map(d => d.value);
+        const subgroupRange = Math.max(...values) - Math.min(...values);
         subgroups.push({
           mean: values.reduce((a, b) => a + b, 0) / size,
-          range: Math.max(...values) - Math.min(...values),
+          range: Math.max(subgroupRange, 0.0001), // Prevent zero range
           values
         });
       }
@@ -217,26 +233,23 @@ export default function AnalysisScreen() {
       const xBarData = subgroups.map((sg, i) => ({ x: i + 1, y: sg.mean }));
       const rangeData = subgroups.map((sg, i) => ({ x: i + 1, y: sg.range }));
 
-      const constants = {
-        1: { A2: 2.66, D3: 0, D4: 3.267, d2: 1.128 },
-        2: { A2: 1.88, D3: 0, D4: 3.267, d2: 1.128 },
-        3: { A2: 1.023, D3: 0, D4: 2.575, d2: 1.693 },
-        4: { A2: 0.729, D3: 0, D4: 2.282, d2: 2.059 },
-        5: { A2: 0.577, D3: 0, D4: 2.115, d2: 2.326 }
-      };
-
-      const { A2, D3, D4, d2 } = constants[sampleSize as keyof typeof constants] || constants[1];
-
       const mean = xBarData.reduce((a, b) => a + b.y, 0) / xBarData.length;
-      
-      const rangeMean = sampleSize === 1
-        ? rangeData.slice(1).reduce((a, b) => a + b.y, 0) / (rangeData.length - 1)
-        : rangeData.reduce((a, b) => a + b.y, 0) / rangeData.length;
+
+      // Ensure range mean is not zero
+      const rangeMean = Math.max(
+        sampleSize === 1
+          ? rangeData.slice(1).reduce((a, b) => a + b.y, 0) / (rangeData.length - 1)
+          : rangeData.reduce((a, b) => a + b.y, 0) / rangeData.length,
+        0.0001
+      );
+
+      const constants = SPC_CONSTANTS[sampleSize as keyof typeof SPC_CONSTANTS];
+      const { A2, D3, D4, d2 } = constants;
 
       const xBarUcl = sampleSize === 1
         ? mean + (2.66 * rangeMean)
         : mean + (A2 * rangeMean);
-      
+
       const xBarLcl = sampleSize === 1
         ? mean - (2.66 * rangeMean)
         : mean - (A2 * rangeMean);
@@ -246,11 +259,28 @@ export default function AnalysisScreen() {
 
       const usl = parseFloat(filteredData[0].ToSpecification);
       const lsl = parseFloat(filteredData[0].FromSpecification);
-      
-      const stdDev = rangeMean / d2;
-      const cp = (usl - lsl) / (6 * stdDev);
-      const cpu = (usl - mean) / (3 * stdDev);
-      const cpl = (mean - lsl) / (3 * stdDev);
+
+      // Prevent division by zero in capability calculations
+      const stdDev = Math.max(rangeMean / d2, 0.0001);
+
+      // Add validation for specification limits
+      if (usl <= lsl) {
+        setError('Invalid specification limits: USL must be greater than LSL');
+        setLoading(false);
+        return;
+      }
+
+      // Calculate capability indices with protection against infinity
+      const calculateCapabilityIndex = (value: number) => {
+        if (!isFinite(value) || Math.abs(value) > 1000) {
+          return 999.999; // Cap the maximum value
+        }
+        return value;
+      };
+
+      const cp = calculateCapabilityIndex((usl - lsl) / (6 * stdDev));
+      const cpu = calculateCapabilityIndex((usl - mean) / (3 * stdDev));
+      const cpl = calculateCapabilityIndex((mean - lsl) / (3 * stdDev));
       const cpk = Math.min(cpu, cpl);
 
       const allValues = subgroups.flatMap(sg => sg.values);
@@ -616,8 +646,8 @@ export default function AnalysisScreen() {
                 style={styles.picker}
               >
                 {[1, 2, 3, 4, 5].map((size) => (
-  <Picker.Item key={size} label={`${size}`} value={size} />
-))}
+                  <Picker.Item key={size} label={`${size}`} value={size} />
+                ))}
               </Picker>
             </View>
 
@@ -833,6 +863,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  
   downloadButton: {
     backgroundColor: '#059669',
     borderRadius: 8,
