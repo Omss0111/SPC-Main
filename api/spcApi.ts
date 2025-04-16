@@ -4,6 +4,7 @@ import { format } from 'date-fns';
 import { Platform } from 'react-native';
 
 const BASE_URL = 'http://10.10.1.7:8304/api';
+const LOGIN_BASE_URL = 'http://10.10.1.7:8399/api';
 
 const headers = Platform.OS === 'web'
   ? {
@@ -13,6 +14,58 @@ const headers = Platform.OS === 'web'
       'User-Agent': 'Mozilla/5.0 (Linux: Android 10)',
       'Content-Type': 'application/json',
     };
+
+// Login API Interface and Function
+export interface LoginCredentials {
+  Email: string;
+  password: string;
+  DeviceId: string;
+}
+
+export interface LoginResponse {
+  success: boolean;
+  message: string;
+  data?: any;
+}
+
+export const loginUser = async (credentials: LoginCredentials): Promise<LoginResponse> => {
+  try {
+    if (__DEV__ && Platform.OS === 'web') {
+      console.log('Login request:', {
+        url: `${LOGIN_BASE_URL}/login`,
+        credentials,
+        headers
+      });
+    }
+
+    const response = await axios.post(
+      `${LOGIN_BASE_URL}/login`,
+      credentials,
+      {
+        headers,
+        timeout: 10000,
+        ...(Platform.OS === 'web' ? { withCredentials: false } : {})
+      }
+    );
+
+    return response.data;
+  } catch (error) {
+    if (__DEV__) {
+      if (axios.isAxiosError(error)) {
+        console.error('Login error:', {
+          message: error.message,
+          status: error.response?.status,
+          statusText: error.response?.statusText,
+          data: error.response?.data,
+          headers: error.response?.headers
+        });
+      } else {
+        console.error('Login error:', error);
+      }
+    }
+    throw error;
+  }
+};
 
 // 1. Get Shift List
 export interface ShiftData {
