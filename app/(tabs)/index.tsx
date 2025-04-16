@@ -165,7 +165,7 @@ export default function AnalysisScreen() {
       
       return values.map((value, i) => ({
         mean: value,
-        range: i === 0 ? 0 : movingRanges[i - 1],
+        range: i === 0 ? movingRanges[0] : movingRanges[i - 1],
         values: [value]
       }));
     }
@@ -178,7 +178,7 @@ export default function AnalysisScreen() {
         const subgroupRange = Math.max(...values) - Math.min(...values);
         subgroups.push({
           mean: values.reduce((a, b) => a + b, 0) / size,
-          range: Math.max(subgroupRange, 0.0001), // Prevent zero range
+          range: Math.max(subgroupRange, 0.0001),
           values
         });
       }
@@ -235,10 +235,9 @@ export default function AnalysisScreen() {
 
       const mean = xBarData.reduce((a, b) => a + b.y, 0) / xBarData.length;
 
-      // Ensure range mean is not zero
       const rangeMean = Math.max(
         sampleSize === 1
-          ? rangeData.slice(1).reduce((a, b) => a + b.y, 0) / (rangeData.length - 1)
+          ? rangeData.reduce((a, b) => a + b.y, 0) / rangeData.length
           : rangeData.reduce((a, b) => a + b.y, 0) / rangeData.length,
         0.0001
       );
@@ -260,20 +259,17 @@ export default function AnalysisScreen() {
       const usl = parseFloat(filteredData[0].ToSpecification);
       const lsl = parseFloat(filteredData[0].FromSpecification);
 
-      // Prevent division by zero in capability calculations
-      const stdDev = Math.max(rangeMean / d2, 0.0001);
-
-      // Add validation for specification limits
       if (usl <= lsl) {
         setError('Invalid specification limits: USL must be greater than LSL');
         setLoading(false);
         return;
       }
 
-      // Calculate capability indices with protection against infinity
+      const stdDev = Math.max(rangeMean / d2, 0.0001);
+
       const calculateCapabilityIndex = (value: number) => {
         if (!isFinite(value) || Math.abs(value) > 1000) {
-          return 999.999; // Cap the maximum value
+          return 999.999;
         }
         return value;
       };
@@ -863,7 +859,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  
   downloadButton: {
     backgroundColor: '#059669',
     borderRadius: 8,
