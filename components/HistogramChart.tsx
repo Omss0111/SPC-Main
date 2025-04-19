@@ -6,20 +6,46 @@ interface HistogramChartProps {
   data: {
     x: number;
     y: number;
+    isWithinSpec?: boolean;
+    containsTarget?: boolean;
   }[];
   lsl: number;
   usl: number;
   target: number;
   numberOfBins: number;
+  stats?: {
+    min: number;
+    max: number;
+    processWidth: number;
+    binWidth: number;
+    binStart: number;
+  };
 }
 
-export function HistogramChart({ data, lsl, usl, target, numberOfBins }: HistogramChartProps) {
+export function HistogramChart({ data, lsl, usl, target, numberOfBins, stats }: HistogramChartProps) {
   // Calculate width based on number of bins
   const chartWidth = Math.max(350, numberOfBins * 50); // Minimum 350px or 50px per bin
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Histogram</Text>
+
+      {stats && (
+        <View style={styles.statsContainer}>
+          <View style={styles.statBox}>
+            <Text style={styles.statLabel}>Process Min</Text>
+            <Text style={styles.statValue}>{stats.min.toFixed(3)}</Text>
+          </View>
+          <View style={styles.statBox}>
+            <Text style={styles.statLabel}>Process Max</Text>
+            <Text style={styles.statValue}>{stats.max.toFixed(3)}</Text>
+          </View>
+          <View style={styles.statBox}>
+            <Text style={styles.statLabel}>Bin Width</Text>
+            <Text style={styles.statValue}>{stats.binWidth.toFixed(3)}</Text>
+          </View>
+        </View>
+      )}
 
       <ScrollView horizontal showsHorizontalScrollIndicator={true}>
         <View style={{ width: chartWidth }}>
@@ -43,8 +69,17 @@ export function HistogramChart({ data, lsl, usl, target, numberOfBins }: Histogr
             />
             <VictoryBar
               data={data}
-              style={{ data: { fill: '#93C5FD' } }}
-              barWidth={chartWidth / numberOfBins}
+              style={{
+                data: {
+                  fill: ({ datum }) => {
+                    if (datum.containsTarget) return '#22C55E';
+                    if (datum.isWithinSpec) return '#93C5FD';
+                    return '#FCA5A5';
+                  },
+                  opacity: 0.8
+                }
+              }}
+              barWidth={chartWidth / (numberOfBins * 1.5)}
             />
             <VictoryLine
               x={() => lsl}
@@ -83,15 +118,15 @@ export function HistogramChart({ data, lsl, usl, target, numberOfBins }: Histogr
       <View style={styles.legend}>
         <View style={styles.legendItem}>
           <View style={[styles.legendColor, { backgroundColor: '#93C5FD' }]} />
-          <Text style={styles.legendText}>Frequency</Text>
-        </View>
-        <View style={styles.legendItem}>
-          <View style={[styles.legendColor, { backgroundColor: '#EF4444' }]} />
-          <Text style={styles.legendText}>Specification Limits</Text>
+          <Text style={styles.legendText}>Within Spec</Text>
         </View>
         <View style={styles.legendItem}>
           <View style={[styles.legendColor, { backgroundColor: '#22C55E' }]} />
-          <Text style={styles.legendText}>Target</Text>
+          <Text style={styles.legendText}>Target Range</Text>
+        </View>
+        <View style={styles.legendItem}>
+          <View style={[styles.legendColor, { backgroundColor: '#FCA5A5' }]} />
+          <Text style={styles.legendText}>Out of Spec</Text>
         </View>
       </View>
 
@@ -126,12 +161,36 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+    marginBottom: 16,
   },
   title: {
     fontSize: 18,
     fontWeight: '600',
     color: '#111827',
     marginBottom: 16,
+  },
+  statsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+    gap: 8,
+  },
+  statBox: {
+    flex: 1,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 8,
+    padding: 12,
+    alignItems: 'center',
+  },
+  statLabel: {
+    fontSize: 12,
+    color: '#374151',
+    marginBottom: 4,
+  },
+  statValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1F2937',
   },
   legend: {
     flexDirection: 'row',
@@ -176,4 +235,4 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#1F2937',
   },
-}); 
+});

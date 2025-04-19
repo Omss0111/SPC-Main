@@ -149,27 +149,39 @@ export default function AnalysisScreen() {
       console.error('Error loading gauges:', error);
     }
   };
-
   const calculateSubgroups = (data: InspectionData[], size: number): Subgroup[] => {
     const sortedData = data
-      .map(d => ({
-        ...d,
-        value: parseFloat(d.ActualSpecification),
-        date: new Date(d.TrnDate)
-      }))
+      .map(d => {
+        // Safely parse the numeric value and handle potential NaN
+        const value = parseFloat(d.ActualSpecification);
+        if (isNaN(value)) {
+          console.warn('Invalid measurement value found: ',d.ActualSpecification);
+          return null;
+        }
+        return {
+          ...d,
+          value,
+          date: new Date(d.TrnDate)
+        };
+      })
+      .filter((d): d is NonNullable<typeof d> => d !== null) // Remove null values
       .sort((a, b) => a.date.getTime() - b.date.getTime());
-
+  
+    if (sortedData.length === 0) {
+      return [];
+    }
+  
     if (size === 1) {
       const values = sortedData.map(d => d.value);
       const movingRanges = values.slice(1).map((value, i) => Math.abs(value - values[i]));
       
       return values.map((value, i) => ({
         mean: value,
-        range: i === 0 ? movingRanges[0] : movingRanges[i - 1],
+        range: i === 0 ? movingRanges[0] || 0 : movingRanges[i - 1],
         values: [value]
       }));
     }
-
+  
     const subgroups: Subgroup[] = [];
     for (let i = 0; i < sortedData.length; i += size) {
       const subgroup = sortedData.slice(i, i + size);
@@ -178,7 +190,7 @@ export default function AnalysisScreen() {
         const subgroupRange = Math.max(...values) - Math.min(...values);
         subgroups.push({
           mean: values.reduce((a, b) => a + b, 0) / size,
-          range: Math.max(subgroupRange, 0.0001),
+          range: Math.max(subgroupRange, 0.0001), // Ensure non-zero range
           values
         });
       }
@@ -284,20 +296,25 @@ export default function AnalysisScreen() {
       
       const min = Math.min(...allValues);
       const max = Math.max(...allValues);
-      const binWidth = (max - min) / numberOfBins;
+      const processWidth = max - min;
+      const binWidth = processWidth / numberOfBins;
+      
+      const binStart = Math.min(min, lsl);
       
       const binCounts = new Array(numberOfBins).fill(0);
       allValues.forEach(value => {
         const binIndex = Math.min(
-          Math.floor((value - min) / binWidth),
+          Math.floor((value - binStart) / binWidth),
           numberOfBins - 1
         );
         binCounts[binIndex]++;
       });
 
       const distributionData = binCounts.map((count, i) => ({
-        x: min + (i * binWidth) + (binWidth / 2),
-        y: count
+        x: binStart + (i * binWidth) + (binWidth / 2),
+        y: count,
+        isWithinSpec: (binStart + i * binWidth) >= lsl && (binStart + (i+1) * binWidth) <= usl,
+        containsTarget: (binStart + i * binWidth) <= ((usl + lsl) / 2) && (binStart + (i+1) * binWidth) >= ((usl + lsl) / 2)
       }));
 
       setAnalysisData({
@@ -334,7 +351,12 @@ export default function AnalysisScreen() {
           stats: {
             mean: Number(mean.toFixed(4)),
             stdDev: Number(stdDev.toFixed(4)),
-            target: Number(((usl + lsl) / 2).toFixed(4))
+            target: Number(((usl + lsl) / 2).toFixed(4)),
+            min: min,
+            max: max,
+            processWidth: processWidth,
+            binWidth: binWidth,
+            binStart: binStart
           },
           numberOfBins
         }
